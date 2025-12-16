@@ -40,17 +40,30 @@ class GameUI:
 
         inventory_panel_width = 260
 
-        # Область мира — всё, кроме правой панели
-        world_width = WINDOW_WIDTH - inventory_panel_width
-        world_height = WINDOW_HEIGHT
+        # Геометрия рамки и внутреннего поля, чтобы
+        # логические координаты совпадали с "миром" без учёта панелей
+        frame_rect = pygame.Rect(20, 20, WINDOW_WIDTH - 40, WINDOW_HEIGHT - 40)
+        inner_rect = frame_rect.inflate(-16, -16)
+        self.inner_rect = inner_rect
+
+        # Область мира (в логических координатах 0..world_width / 0..world_height)
+        world_rect = pygame.Rect(
+            inner_rect.left + 12,
+            inner_rect.top + 56,
+            inner_rect.width - inventory_panel_width - 24,
+            inner_rect.height - 96,
+        )
+        self.world_rect = world_rect
+        world_width = world_rect.width
+        world_height = world_rect.height
 
         # Зона удаления — элегантная «чаша» внизу
         delete_zone_height = 90
         self.delete_zone = DeleteZone(
-            x=40,
-            y=world_height - delete_zone_height - 20,
-            width=world_width - 80,
-            height=delete_zone_height,
+            x1=40,
+            y1=world_height - delete_zone_height - 20,
+            x2=world_width - 40,
+            y2=world_height - 20,
         )
 
         self.logic = GameLogic(
@@ -65,7 +78,10 @@ class GameUI:
         self.font_medium = pygame.font.SysFont("Georgia", 20)
 
         self.inventory_panel_rect = pygame.Rect(
-            world_width, 0, inventory_panel_width, WINDOW_HEIGHT
+            world_rect.right,
+            0,
+            inventory_panel_width,
+            WINDOW_HEIGHT,
         )
 
         self.running = True
@@ -94,11 +110,13 @@ class GameUI:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     # ЛКМ — выплюнуть шарик из инвентаря
-                    mouse_pos = pygame.mouse.get_pos()
+                    mouse_pos_window = pygame.mouse.get_pos()
+                    mouse_pos = (
+                        mouse_pos_window[0] - self.world_rect.left,
+                        mouse_pos_window[1] - self.world_rect.top,
+                    )
                     # Стреляем немного вверх и в сторону центра
-                    direction = pygame.Vector2(
-                        -0.1, -1.0
-                    )  # лёгкий наклон влево, как из арки
+                    direction = (-0.1, -1.0)  # лёгкий наклон влево, как из арки
                     self.logic.spit_ball_from_inventory(
                         mouse_pos=mouse_pos, direction=direction
                     )
@@ -106,7 +124,11 @@ class GameUI:
         # Удержание ПКМ — «всасывание» шариков в инвентарь
         buttons = pygame.mouse.get_pressed(3)
         if buttons[2]:
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos_window = pygame.mouse.get_pos()
+            mouse_pos = (
+                mouse_pos_window[0] - self.world_rect.left,
+                mouse_pos_window[1] - self.world_rect.top,
+            )
             self.logic.suck_balls_with_mouse(mouse_pos=mouse_pos)
 
     # ---------- Логика спавна ----------
@@ -146,7 +168,7 @@ class GameUI:
         frame_rect = pygame.Rect(20, 20, WINDOW_WIDTH - 40, WINDOW_HEIGHT - 40)
         pygame.draw.rect(self.screen, self.palette.frame_outer, frame_rect, border_radius=12)
 
-        inner_rect = frame_rect.inflate(-16, -16)
+        inner_rect = self.inner_rect
         pygame.draw.rect(self.screen, self.palette.frame_inner, inner_rect, border_radius=10)
 
         # Разделительная линия между миром и инвентарём
@@ -159,21 +181,18 @@ class GameUI:
         )
 
         # Мир
-        self._draw_world(inner_rect)
+        self._draw_world()
 
         # Инвентарь
-        self._draw_inventory_panel(inner_rect)
+        self._draw_inventory_panel()
 
         pygame.display.flip()
 
-    def _draw_world(self, inner_rect: pygame.Rect) -> None:
+    def _draw_world(self) -> None:
+        inner_rect = self.inner_rect
+        world_rect = self.world_rect
+
         # Подложка мира
-        world_rect = pygame.Rect(
-            inner_rect.left + 12,
-            inner_rect.top + 56,
-            inner_rect.width - self.inventory_panel_rect.width - 24,
-            inner_rect.height - 96,
-        )
         pygame.draw.rect(
             self.screen,
             (26, 32, 44),
@@ -190,10 +209,10 @@ class GameUI:
         # Зона удаления — «чаша»
         dz = self.delete_zone
         delete_rect = pygame.Rect(
-            dz.x + inner_rect.left,
-            dz.y,
-            dz.width,
-            dz.height,
+            self.world_rect.left + dz.x1,
+            self.world_rect.top + dz.y1,
+            dz.x2 - dz.x1,
+            dz.y2 - dz.y1,
         )
 
         pygame.draw.rect(
@@ -221,11 +240,15 @@ class GameUI:
             pygame.draw.circle(
                 self.screen,
                 ball.color,
-                (int(ball.position[0] + inner_rect.left), int(ball.position[1])),
+                (
+                    int(self.world_rect.left + ball.position[0]),
+                    int(self.world_rect.top + ball.position[1]),
+                ),
                 int(ball.radius),
             )
 
-    def _draw_inventory_panel(self, inner_rect: pygame.Rect) -> None:
+    def _draw_inventory_panel(self) -> None:
+        inner_rect = self.inner_rect
         panel_rect = pygame.Rect(
             inner_rect.right - self.inventory_panel_rect.width + 12,
             inner_rect.top + 32,
